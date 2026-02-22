@@ -40,6 +40,7 @@ st.markdown("""
         border-radius: 0 0 30px 30px;
         text-align: center;
         margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
     .header h1 { font-size: 3rem; font-weight: 900; margin-bottom: 0.5rem; }
     .header p { font-size: 1.2rem; opacity: 0.9; }
@@ -52,6 +53,11 @@ st.markdown("""
         text-align: center;
         border: 1px solid #e0e0e0;
         height: 100%;
+        transition: transform 0.3s ease;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     }
     .metric-card .value { font-size: 2.2rem; font-weight: 900; color: #1e3c72; }
     .metric-card .label { color: #666; font-size: 1rem; }
@@ -86,6 +92,14 @@ st.markdown("""
         text-align: right;
     }
     
+    .what-if-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        border: 1px solid #ced4da;
+        margin: 1rem 0;
+    }
+    
     .footer {
         background: #1e3c72;
         color: white;
@@ -100,6 +114,14 @@ st.markdown("""
         font-weight: 600;
         width: 100%;
         border: none;
+        border-radius: 8px;
+        padding: 0.75rem;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #2a5298, #1e3c72);
+        box-shadow: 0 5px 15px rgba(30,60,114,0.4);
+        transform: translateY(-2px);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -108,44 +130,40 @@ st.markdown("""
 def generate_official_data():
     """الطبقة الأولى: بيانات رسمية مجمعة (محاكاة لنشرة الإسكان)"""
     return pd.DataFrame({
-        "المحافظة": ["القاهرة", "الجيزة", "الإسكندرية", "أسيوط", "سوهاج"],
-        "الوحدات": [15000, 12000, 10000, 8000, 7000],
-        "نسبة_القبول": [0.18, 0.22, 0.20, 0.25, 0.27]
+        "المحافظة": ["القاهرة", "الجيزة", "الإسكندرية", "أسيوط", "سوهاج", "قنا", "أسوان", "المنيا"],
+        "الوحدات": [15000, 12000, 10000, 8000, 7000, 6000, 5000, 5500],
+        "نسبة_القبول": [0.18, 0.22, 0.20, 0.25, 0.27, 0.28, 0.30, 0.26]
     })
 
 @st.cache_data
-def generate_synthetic_data(n_extra=0):
+def generate_synthetic_data(n_extra=8000):
     """
     توليد بيانات صناعية محاكاة بناءً على البيانات الرسمية + خصائص إضافية
-    - المناطق النائية (أسيوط، سوهاج) تعتبر أقل حظاً
-    - إضافة حالات إعاقة، أرامل، عمالة غير منتظمة
     """
     official = generate_official_data()
     official["المتقدمون_التقديريون"] = (official["الوحدات"] / official["نسبة_القبول"]).astype(int)
-    total = official["المتقدمون_التقديريون"].sum()
-    if n_extra > 0:
-        total = n_extra  # للتحكم في حجم العينة
+    total = n_extra
 
+    # قائمة المحافظات الكاملة
+    governorates_list = official["المحافظة"].tolist()
+    
     # توزيع المحافظات حسب الوزن الرسمي
-    governorates = np.random.choice(
-        official["المحافظة"],
-        size=total,
-        p=official["المتقدمون_التقديريون"] / official["المتقدمون_التقديريون"].sum()
-    )
+    probs = official["المتقدمون_التقديريون"] / official["المتقدمون_التقديريون"].sum()
+    governorates = np.random.choice(governorates_list, size=total, p=probs)
 
     # المتغيرات الأساسية
-    income = np.random.normal(5500, 2000, total).clip(1500, 12000)
-    family_size = np.random.randint(1, 6, total)
+    income = np.random.normal(5500, 2000, total).clip(1500, 15000)
+    family_size = np.random.randint(1, 7, total)
     employment = np.random.choice(["رسمي", "غير رسمي"], total, p=[0.6, 0.4])
     
-    # الحالة الاجتماعية (نسبة الأرامل ~7%، المطلقات ~8%، مع تركيز أعلى في المناطق النائية)
+    # الحالة الاجتماعية
     marital_status = np.random.choice(
         ["أعزب", "متزوج", "مطلق", "أرمل"],
         total,
         p=[0.25, 0.60, 0.08, 0.07]
     )
     
-    # الإعاقة (11.5% حسب الإحصاءات)
+    # الإعاقة
     disability = np.random.choice([0, 1], total, p=[0.885, 0.115])
     disability_severity = np.zeros(total)
     for i in range(total):
@@ -153,10 +171,9 @@ def generate_synthetic_data(n_extra=0):
             disability_severity[i] = np.random.choice([0.3, 0.5, 0.8, 0.6, 0.5, 0.7, 0.9],
                                                        p=[0.25,0.15,0.1,0.12,0.1,0.15,0.13])
     
-    # ملكية سابقة (نسبة صغيرة)
+    # ملكية سابقة
     previous_ownership = np.random.choice([0, 1], total, p=[0.93, 0.07])
 
-    # إنشاء DataFrame
     data = pd.DataFrame({
         "المحافظة": governorates,
         "الدخل": income,
@@ -168,8 +185,7 @@ def generate_synthetic_data(n_extra=0):
         "ملكية_سابقة": previous_ownership
     })
 
-    # حساب الاستحقاق الفعلي وفق القانون (دخل ≤ 6000، لا ملكية سابقة، عمر ≥ 21)
-    # نفترض العمر بين 18 و 70، نولده الآن
+    # حساب الاستحقاق الفعلي
     ages = np.random.randint(18, 70, total)
     data["العمر"] = ages
     data["الاستحقاق_الفعلي"] = (
@@ -178,36 +194,53 @@ def generate_synthetic_data(n_extra=0):
         (data["العمر"] >= 21)
     ).astype(int)
 
-    # استثناءات إنسانية: إعاقة شديدة (أكثر من 0.7) ودخل ≤ 7000
+    # استثناءات إنسانية
     special_cases = (data["شدة_الإعاقة"] > 0.7) & (data["الدخل"] <= 7000)
     data.loc[special_cases, "الاستحقاق_الفعلي"] = 1
 
-    # إضافة متغير "وزن إضافي" سيستخدم في التدريب العادل
-    # يعتمد على المنطقة النائية، الحالة الاجتماعية، الإعاقة، ونوع العمل
+    # ===== نظام الأوزان التصاعدي المتراكم (Cumulative Progressive Weights) =====
+    # الفلسفة: نبدأ من العجز البدني (الإعاقة الشديدة)، ثم الهشاشة الاجتماعية (الأرامل)، ثم المظلومية الجغرافية (المناطق النائية)
+    
     data["وزن_العدالة"] = 1.0  # الوزن الأساسي
 
-    # 1. المناطق النائية (أسيوط، سوهاج) تحصل على وزن إضافي
-    data.loc[data["المحافظة"].isin(["أسيوط", "سوهاج"]), "وزن_العدالة"] *= 1.3
+    # المرتبة الأولى: الإعاقة الشديدة (الوزن الأعلى - 2.0x)
+    # الإعاقة الشديدة (أكثر من 0.7) تحصل على وزن مضاعف
+    severe_disability_mask = data["شدة_الإعاقة"] >= 0.7
+    data.loc[severe_disability_mask, "وزن_العدالة"] *= 2.0
+    
+    # الإعاقة المتوسطة (بين 0.4 و 0.7) تحصل على وزن 1.5x
+    moderate_disability_mask = (data["شدة_الإعاقة"] >= 0.4) & (data["شدة_الإعاقة"] < 0.7)
+    data.loc[moderate_disability_mask, "وزن_العدالة"] *= 1.5
+    
+    # الإعاقة البسيطة (أقل من 0.4) تحصل على وزن 1.2x
+    mild_disability_mask = (data["شدة_الإعاقة"] > 0) & (data["شدة_الإعاقة"] < 0.4)
+    data.loc[mild_disability_mask, "وزن_العدالة"] *= 1.2
 
-    # 2. الأرامل يحصلن على وزن إضافي
-    data.loc[data["الحالة_الاجتماعية"] == "أرمل", "وزن_العدالة"] *= 1.4
+    # المرتبة الثانية: الأرملة التي تعول (وزن - 1.8x)
+    # الأرامل (خاصة مع وجود أطفال) يحصلن على وزن كبير
+    widowed_mask = data["الحالة_الاجتماعية"] == "أرمل"
+    data.loc[widowed_mask, "وزن_العدالة"] *= 1.8
+    
+    # المطلقات مع أطفال يحصلن على وزن 1.4x
+    divorced_with_kids_mask = (data["الحالة_الاجتماعية"] == "مطلق") & (data["حجم_الأسرة"] > 2)
+    data.loc[divorced_with_kids_mask, "وزن_العدالة"] *= 1.4
 
-    # 3. الإعاقة حسب شدتها
-    data["وزن_العدالة"] *= (1 + data["شدة_الإعاقة"] * 0.5)  # زيادة تصل إلى 50%
+    # المرتبة الثالثة: المناطق النائية (وزن - 1.5x)
+    remote_areas = ["أسيوط", "سوهاج", "قنا", "أسوان"]
+    remote_mask = data["المحافظة"].isin(remote_areas)
+    data.loc[remote_mask, "وزن_العدالة"] *= 1.5
 
-    # 4. العمالة غير المنتظمة
-    data.loc[data["نوع_العمل"] == "غير رسمي", "وزن_العدالة"] *= 1.2
+    # العمالة غير المنتظمة (وزن إضافي 1.2x)
+    informal_mask = data["نوع_العمل"] == "غير رسمي"
+    data.loc[informal_mask, "وزن_العدالة"] *= 1.2
 
-    # 5. النساء الأرامل المعاقات من المناطق النائية (مضاعفة الأوزان)
-    data["وزن_العدالة"] = data.apply(
-        lambda row: row["وزن_العدالة"] * 1.5 
-        if (row["الحالة_الاجتماعية"] == "أرمل" and row["إعاقة"] == 1 
-            and row["المحافظة"] in ["أسيوط", "سوهاج"])
-        else row["وزن_العدالة"],
-        axis=1
-    )
+    # ===== الأوزان التقاطعية (Intersectionality) - تراكم الأوزان للحالات المركبة =====
+    # مثال: أرملة + إعاقة + منطقة نائية = أوزان متراكمة
+    # هذا يحدث تلقائياً لأننا نضرب الأوزان (الضرب المتتالي)
+    # نحتاج فقط للتأكد من عدم تجاوز حد معين (لتجنب التضخم المفرط)
+    data["وزن_العدالة"] = data["وزن_العدالة"].clip(upper=5.0)  # حد أقصى 5 أضعاف
 
-    # القرار التقليدي (نظام بسيط: دخل < 6000 وعدم ملكية سابقة فقط، بدون استثناءات)
+    # القرار التقليدي
     data["القرار_التقليدي"] = (
         (data["الدخل"] <= 6000) & 
         (data["ملكية_سابقة"] == 0)
@@ -219,13 +252,9 @@ def generate_synthetic_data(n_extra=0):
 def mcas_score(y_true, y_pred, lambda1=1, lambda2=1):
     """
     حساب مقياس MCAS وفقًا لبحث د. محمد الهاداد
-    الصيغة: MCAS = [λ₁*(CSS⁺ - CFS) + λ₂*(CSS⁻ - CFS)] / (λ₁+λ₂)
-    حيث CSS⁺ = TP/(TP+FP+FN), CSS⁻ = TN/(TN+FP+FN)
-    CFS = 0.5 * [FP/(TP+TN+FP) + FN/(TP+TN+FN)]
     """
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
     
-    # تجنب القسمة على صفر
     css_plus = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else 0
     css_minus = tn / (tn + fp + fn) if (tn + fp + fn) > 0 else 0
     
@@ -241,16 +270,12 @@ def mcas_score(y_true, y_pred, lambda1=1, lambda2=1):
 def analyze_bias(data):
     """تحليل معدلات القبول حسب الفئات المختلفة"""
     results = {}
-    # حسب المحافظة
     by_gov = data.groupby("المحافظة")["الاستحقاق_الفعلي"].mean()
     results["المحافظة"] = by_gov
-    # حسب نوع العمل
     by_work = data.groupby("نوع_العمل")["الاستحقاق_الفعلي"].mean()
     results["نوع_العمل"] = by_work
-    # حسب الحالة الاجتماعية
     by_marital = data.groupby("الحالة_الاجتماعية")["الاستحقاق_الفعلي"].mean()
     results["الحالة_الاجتماعية"] = by_marital
-    # حسب الإعاقة
     by_disability = data.groupby("إعاقة")["الاستحقاق_الفعلي"].mean()
     results["إعاقة"] = by_disability
     return results
@@ -266,10 +291,8 @@ def train_fair_model(data):
     """
     تدريب RandomForest مع استخدام أوزان العينات (sample_weight) المستمدة من "وزن_العدالة"
     """
-    # اختيار الميزات
     feature_cols = ['العمر', 'الدخل', 'حجم_الأسرة', 'إعاقة', 'شدة_الإعاقة', 'ملكية_سابقة']
     
-    # ترميز المتغيرات الفئوية
     data_encoded = data.copy()
     encoders = {}
     for col in ['المحافظة', 'نوع_العمل', 'الحالة_الاجتماعية']:
@@ -280,22 +303,18 @@ def train_fair_model(data):
     
     X = data_encoded[feature_cols]
     y = data_encoded['الاستحقاق_الفعلي']
-    sample_weights = data_encoded['وزن_العدالة'].values  # أوزان العدالة
+    sample_weights = data_encoded['وزن_العدالة'].values
 
-    # تقسيم البيانات مع الحفاظ على توزيع الـ y
     X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X, y, sample_weights, test_size=0.2, random_state=42, stratify=y
     )
 
-    # تدريب النموذج العادل
-    fair_model = RandomForestClassifier(n_estimators=200, max_depth=15, random_state=42)
+    fair_model = RandomForestClassifier(n_estimators=200, max_depth=15, random_state=42, n_jobs=-1)
     fair_model.fit(X_train, y_train, sample_weight=w_train)
 
-    # تنبؤات
     y_pred_fair = fair_model.predict(X_test)
     y_proba_fair = fair_model.predict_proba(X_test)[:, 1]
 
-    # حساب المقاييس
     metrics_fair = {
         'accuracy': accuracy_score(y_test, y_pred_fair),
         'precision': precision_score(y_test, y_pred_fair),
@@ -313,12 +332,14 @@ def train_fair_model(data):
         'y_test': y_test,
         'y_pred': y_pred_fair,
         'y_proba': y_proba_fair,
-        'sample_weights': w_test  # للتحليل
+        'sample_weights': w_test,
+        'X_train': X_train,
+        'y_train': y_train
     }
 
 # ==================== تدريب النموذج التقليدي ====================
 def train_traditional_model(data):
-    """نموذج تقليدي بسيط: لا يستخدم أوزان عدالة، فقط قواعد أو RandomForest عادي"""
+    """نموذج تقليدي بسيط: لا يستخدم أوزان عدالة"""
     feature_cols = ['العمر', 'الدخل', 'حجم_الأسرة', 'إعاقة', 'شدة_الإعاقة', 'ملكية_سابقة']
     data_encoded = data.copy()
     encoders = {}
@@ -332,7 +353,7 @@ def train_traditional_model(data):
     y = data_encoded['الاستحقاق_الفعلي']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
-    trad_model = RandomForestClassifier(n_estimators=200, max_depth=15, random_state=42)
+    trad_model = RandomForestClassifier(n_estimators=200, max_depth=15, random_state=42, n_jobs=-1)
     trad_model.fit(X_train, y_train)
     y_pred = trad_model.predict(X_test)
     y_proba = trad_model.predict_proba(X_test)[:, 1]
@@ -353,7 +374,9 @@ def train_traditional_model(data):
         'X_test': X_test,
         'y_test': y_test,
         'y_pred': y_pred,
-        'y_proba': y_proba
+        'y_proba': y_proba,
+        'X_train': X_train,
+        'y_train': y_train
     }
 
 # ==================== دالة التنبؤ + النظام الهجين ====================
@@ -369,7 +392,8 @@ def hybrid_decision(model_pack, user_data, threshold_high=0.8, threshold_low=0.2
     
     input_df = pd.DataFrame([user_data])
     for col, encoder in encoders.items():
-        input_df[col] = encoder.transform(input_df[col])
+        if col in input_df.columns:
+            input_df[col] = encoder.transform(input_df[col])
     
     X_input = input_df[feature_cols]
     prob = model.predict_proba(X_input)[0][1]
@@ -396,9 +420,11 @@ def hybrid_decision(model_pack, user_data, threshold_high=0.8, threshold_low=0.2
         'review_needed': review_needed
     }
 
-def generate_explanation(user_data, hybrid_result, model_pack=None):
+def generate_explanation(user_data, hybrid_result):
     """توليد تقرير تفسيري بالعربية"""
     factors = []
+    
+    # الشروط الأساسية
     if user_data['الدخل'] <= 6000:
         factors.append("✓ الدخل مناسب (≤ 6000)")
     else:
@@ -414,17 +440,27 @@ def generate_explanation(user_data, hybrid_result, model_pack=None):
     else:
         factors.append("✗ العمر أقل من 21")
     
+    # الأوزان التصاعدية
     if user_data['إعاقة'] == 1:
-        factors.append("✓ لديه إعاقة (يستحق دعماً إضافياً)")
+        severity = user_data['شدة_الإعاقة']
+        if severity >= 0.7:
+            factors.append(f"✓✓ إعاقة شديدة (درجة {severity:.1f}) - أولوية قصوى")
+        elif severity >= 0.4:
+            factors.append(f"✓ إعاقة متوسطة (درجة {severity:.1f}) - أولوية عالية")
+        else:
+            factors.append(f"✓ إعاقة بسيطة (درجة {severity:.1f}) - أولوية")
     
     if user_data['الحالة_الاجتماعية'] == 'أرمل':
-        factors.append("✓ أرمل/أرملة (أولوية)")
+        factors.append("✓✓ أرمل/أرملة - أولوية اجتماعية قصوى")
+    elif user_data['الحالة_الاجتماعية'] == 'مطلق' and user_data.get('حجم_الأسرة', 1) > 2:
+        factors.append("✓ مطلق/مطلقة مع أطفال - أولوية اجتماعية")
     
-    if user_data['المحافظة'] in ['أسيوط', 'سوهاج']:
-        factors.append("✓ من منطقة نائية (أولوية)")
+    remote_areas = ["أسيوط", "سوهاج", "قنا", "أسوان"]
+    if user_data['المحافظة'] in remote_areas:
+        factors.append("✓ من منطقة نائية - أولوية جغرافية")
     
     if user_data['نوع_العمل'] == 'غير رسمي':
-        factors.append("✓ عمالة غير منتظمة (أولوية)")
+        factors.append("✓ عمالة غير منتظمة - أولوية اقتصادية")
     
     explanation = f"""
     ### 📋 تقرير تفسير القرار
@@ -441,31 +477,60 @@ def generate_explanation(user_data, hybrid_result, model_pack=None):
     
     return explanation
 
+# ==================== تحليل "ماذا لو" (What-if Analysis) ====================
+def what_if_analysis(model_pack, base_user_data):
+    """
+    تحليل تأثير تغيير الدخل على فرص الاستحقاق
+    """
+    model = model_pack['model']
+    encoders = model_pack['encoders']
+    feature_cols = model_pack['feature_cols']
+    
+    income_range = np.arange(2000, 10001, 500)
+    probabilities = []
+    
+    for inc in income_range:
+        temp_data = base_user_data.copy()
+        temp_data['الدخل'] = inc
+        
+        input_df = pd.DataFrame([temp_data])
+        for col, encoder in encoders.items():
+            if col in input_df.columns:
+                input_df[col] = encoder.transform(input_df[col])
+        
+        X_input = input_df[feature_cols]
+        prob = model.predict_proba(X_input)[0][1]
+        probabilities.append(prob)
+    
+    return income_range, probabilities
+
 # ==================== الصفحة الرئيسية للتطبيق ====================
 def main():
     st.markdown("""
     <div class="header">
         <h1>⚖️ Mizan AI - نظام العدالة الذكي للإسكان الاجتماعي</h1>
-        <p>نموذج هجين يجمع بين الذكاء الاصطناعي العادل والمراجعة البشرية</p>
+        <p>نموذج هجين مع نظام الأوزان التصاعدي المتراكم (الإعاقة ← الأرامل ← المناطق النائية)</p>
     </div>
     """, unsafe_allow_html=True)
 
     # ===== توليد البيانات =====
     with st.spinner("📊 جاري توليد بيانات المحاكاة..."):
-        data = generate_synthetic_data(n_extra=5000)  # 5000 عينة للسرعة
+        data = generate_synthetic_data(n_extra=8000)
         official = generate_official_data()
 
     # ===== تحليل EDA والتحيز =====
     st.markdown("## 📊 تحليل البيانات الاستكشافي (EDA) واكتشاف التحيز")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("إجمالي العينات", f"{len(data):,}")
-        st.metric("نسبة المستحقين الفعلية", f"{data['الاستحقاق_الفعلي'].mean()*100:.1f}%")
     with col2:
+        st.metric("نسبة المستحقين الفعلية", f"{data['الاستحقاق_الفعلي'].mean()*100:.1f}%")
+    with col3:
         st.metric("نسبة القرار التقليدي", f"{data['القرار_التقليدي'].mean()*100:.1f}%")
-        bias_gap = detect_bias_gap(data, "المحافظة")
-        st.metric("الفجوة بين المحافظات (تحيز)", f"{bias_gap*100:.1f}%")
+    
+    bias_gap = detect_bias_gap(data, "المحافظة")
+    st.metric("الفجوة بين المحافظات (تحيز)", f"{bias_gap*100:.1f}%")
     
     st.markdown("### 📈 توزيع الاستحقاق حسب الفئات")
     tab1, tab2, tab3, tab4 = st.tabs(["المحافظة", "نوع العمل", "الحالة الاجتماعية", "الإعاقة"])
@@ -495,13 +560,20 @@ def main():
                      color_continuous_scale="RdYlGn")
         st.plotly_chart(fig, use_container_width=True)
 
+    # عرض توزيع أوزان العدالة
+    st.markdown("### ⚖️ توزيع أوزان العدالة")
+    fig = px.histogram(data, x="وزن_العدالة", nbins=50, title="توزيع أوزان العدالة",
+                       color_discrete_sequence=["#4caf50"])
+    fig.add_vline(x=1.0, line_dash="dash", line_color="red", annotation_text="الوزن الأساسي")
+    st.plotly_chart(fig, use_container_width=True)
+
     # ===== تدريب النماذج (تقليدي وعادل) =====
     st.markdown("---")
     st.markdown("## 🤖 تدريب النماذج والمقارنة")
 
     with st.spinner("🔄 جاري تدريب النموذج التقليدي..."):
         trad_pack = train_traditional_model(data)
-    with st.spinner("⚖️ جاري تدريب النموذج العادل (مع أوزان العدالة)..."):
+    with st.spinner("⚖️ جاري تدريب النموذج العادل (مع أوزان العدالة التصاعدية)..."):
         fair_pack = train_fair_model(data)
 
     # عرض مقارنة الأداء
@@ -545,7 +617,6 @@ def main():
     test_data = data.iloc[fair_pack['X_test'].index].copy()
     test_data['تنبؤ_عادل'] = fair_pack['y_pred']
     
-    # حساب معدلات القبول حسب المحافظة للنموذج العادل
     acc_by_gov_fair = test_data.groupby('المحافظة')['تنبؤ_عادل'].mean()
     acc_by_gov_true = test_data.groupby('المحافظة')['الاستحقاق_الفعلي'].mean()
     
@@ -553,10 +624,9 @@ def main():
     fig.add_trace(go.Bar(x=acc_by_gov_fair.index, y=acc_by_gov_fair.values, name='النموذج العادل', marker_color='#4caf50'))
     fig.add_trace(go.Bar(x=acc_by_gov_true.index, y=acc_by_gov_true.values, name='الاستحقاق الفعلي', marker_color='#2196f3'))
     fig.update_layout(title='مقارنة القبول حسب المحافظة: النموذج العادل vs الاستحقاق الفعلي',
-                      xaxis_title='المحافظة', yaxis_title='نسبة القبول')
+                      xaxis_title='المحافظة', yaxis_title='نسبة القبول', barmode='group')
     st.plotly_chart(fig, use_container_width=True)
 
-    # فجوة التحيز الجديدة
     new_gap = acc_by_gov_fair.max() - acc_by_gov_fair.min()
     st.metric("الفجوة الجديدة بين المحافظات (بعد النموذج العادل)", f"{new_gap*100:.1f}%",
               delta=f"{(bias_gap - new_gap)*100:.1f}% انخفاض", delta_color="normal")
@@ -566,9 +636,9 @@ def main():
     st.markdown("## 🧠 النظام الهجين للقرارات")
     st.info("""
     **آلية العمل:**
-    - إذا كانت الثقة ≥ 80% → قرار آلي (مقبول/مرفوض) مع تفسير.
-    - إذا كانت الثقة ≤ 20% → قرار آلي (مقبول/مرفوض) مع تفسير.
-    - إذا كانت الثقة بين 20% و 80% → تحويل للمراجعة البشرية مع تقرير تفسيري مفصل.
+    - **المنطقة الخضراء (ثقة ≥ 80%)** → قرار آلي (مقبول) مع تفسير.
+    - **المنطقة الحمراء (ثقة ≤ 20%)** → قرار آلي (مرفوض) مع تفسير.
+    - **المنطقة الرمادية (بين 20% و 80%)** → تحويل للمراجعة البشرية مع تقرير تفسيري مفصل.
     """)
 
     # إدخال بيانات المتقدم
@@ -576,19 +646,24 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             age = st.number_input("العمر", 18, 70, 35)
-            gender = st.selectbox("الجنس", ['ذكر', 'أنثى'])  # سنستخدمه فقط للتقرير
-            governorate = st.selectbox("المحافظة", ['القاهرة', 'الجيزة', 'الإسكندرية', 'أسيوط', 'سوهاج'])
+            governorate = st.selectbox("المحافظة", ['القاهرة', 'الجيزة', 'الإسكندرية', 'أسيوط', 'سوهاج', 'قنا', 'أسوان', 'المنيا'])
             employment = st.selectbox("نوع العمل", ['رسمي', 'غير رسمي'])
             marital = st.selectbox("الحالة الاجتماعية", ['أعزب', 'متزوج', 'مطلق', 'أرمل'])
         with col2:
-            income = st.number_input("الدخل الشهري", 1500, 12000, 5000)
+            income = st.number_input("الدخل الشهري", 1500, 15000, 5000)
             family_size = st.number_input("حجم الأسرة", 1, 6, 3)
             disability = st.checkbox("لديه إعاقة")
             disability_severity = st.slider("شدة الإعاقة (إذا وجدت)", 0.0, 1.0, 0.5, step=0.1,
                                             disabled=not disability)
             previous = st.checkbox("ملكية سابقة")
 
-    if st.button("🔮 تنبؤ وتحليل", use_container_width=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        predict_button = st.button("🔮 تنبؤ وتحليل", use_container_width=True)
+    with col2:
+        what_if_button = st.button("📊 تحليل ماذا لو (What-if)", use_container_width=True)
+
+    if predict_button or what_if_button:
         # تجهيز بيانات المستخدم
         user_data = {
             'العمر': age,
@@ -599,57 +674,101 @@ def main():
             'ملكية_سابقة': 1 if previous else 0,
             'المحافظة': governorate,
             'نوع_العمل': employment,
-            'الحالة_الاجتماعية': marital,
-            'الجنس': gender
+            'الحالة_الاجتماعية': marital
         }
 
-        # التنبؤ بالنموذج العادل
-        result = hybrid_decision(fair_pack, user_data)
-        explanation = generate_explanation(user_data, result)
+        if predict_button:
+            # التنبؤ بالنموذج العادل
+            result = hybrid_decision(fair_pack, user_data)
+            explanation = generate_explanation(user_data, result)
 
-        # عرض النتيجة
-        if "مقبول" in result['decision']:
-            st.success(f"### {result['decision']}")
-        elif "مرفوض" in result['decision']:
-            st.error(f"### {result['decision']}")
-        else:
-            st.warning(f"### {result['decision']}")
+            # عرض النتيجة
+            if "مقبول" in result['decision']:
+                st.success(f"### {result['decision']}")
+            elif "مرفوض" in result['decision']:
+                st.error(f"### {result['decision']}")
+            else:
+                st.warning(f"### {result['decision']}")
 
-        st.progress(result['probability'])
-        st.markdown(f"**الثقة:** {result['confidence']*100:.1f}%")
+            st.progress(result['probability'])
+            st.markdown(f"**الثقة:** {result['confidence']*100:.1f}%")
+            st.markdown(explanation, unsafe_allow_html=True)
 
-        # عرض التفسير
-        st.markdown(explanation, unsafe_allow_html=True)
+            if result['review_needed']:
+                st.markdown("""
+                <div style="background:#fff3cd; padding:1rem; border-radius:10px; border-right:5px solid #ff9800;">
+                    <strong>📢 توصية:</strong> يُرجى عرض الطلب على اللجنة المختصة مع التقرير أعلاه.
+                </div>
+                """, unsafe_allow_html=True)
 
-        if result['review_needed']:
-            st.markdown("""
-            <div style="background:#fff3cd; padding:1rem; border-radius:10px; border-right:5px solid #ff9800;">
-                <strong>📢 توصية:</strong> يُرجى عرض الطلب على اللجنة المختصة مع التقرير أعلاه.
+        if what_if_button:
+            st.markdown("### 📈 تحليل ماذا لو (What-if)")
+            income_range, probs = what_if_analysis(fair_pack, user_data)
+            
+            fig = px.line(x=income_range, y=probs, markers=True,
+                         title="تأثير تغيير الدخل على فرص الاستحقاق",
+                         labels={'x': 'الدخل الشهري', 'y': 'احتمالية الاستحقاق'})
+            fig.add_hline(y=0.8, line_dash="dash", line_color="green", annotation_text="حد القبول الآلي")
+            fig.add_hline(y=0.2, line_dash="dash", line_color="red", annotation_text="حد الرفض الآلي")
+            fig.update_layout(yaxis_range=[0,1])
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown(f"""
+            <div class="what-if-card">
+                <strong>🔍 تحليل:</strong><br>
+                - عند الدخل الحالي ({income} جنيه)، فرصتك: {probs[np.abs(income_range - income).argmin()]*100:.1f}%<br>
+                - الدخل المطلوب لتحقيق 80% فرصة: {income_range[np.where(probs >= 0.8)[0][0]] if any(p >= 0.8 for p in probs) else 'لا يمكن'} جنيه<br>
+                - الدخل الذي يخفض الفرصة لأقل من 20%: {income_range[np.where(probs <= 0.2)[0][-1]] if any(p <= 0.2 for p in probs) else 'لا يمكن'} جنيه
             </div>
             """, unsafe_allow_html=True)
 
-    # ===== خاتمة: تقييم الفكرة =====
+    # ===== تقييم النظام =====
     st.markdown("---")
     st.markdown("## 📝 تقييم النظام وفلسفة العدالة")
-    st.markdown("""
-    <div style="background:white; padding:2rem; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,0.05);">
-        <h4>✨ نقاط القوة في هذا التصميم:</h4>
-        <ul>
-            <li><strong>محاكاة واقعية:</strong> تم توليد البيانات من طبقات رسمية مع إدخال خصائص حقيقية (إعاقة، أرامل، مناطق نائية).</li>
-            <li><strong>اكتشاف التحيز:</strong> تحليل EDA كشف الفجوات بين الفئات (مثل المحافظات) بوضوح.</li>
-            <li><strong>نموذج عادل:</strong> استخدام أوزان مخصصة للفئات الأقل تمثيلاً، مع مضاعفة الأوزان للتداخلات (امرأة أرملة معاقة من منطقة نائية).</li>
-            <li><strong>مقياس MCAS:</strong> دمج مقياس متعدد الأبعاد لتجنب الدقة الوهمية والتركيز على أداء النموذج مع الفئات القليلة.</li>
-            <li><strong>نظام هجين:</strong> الجمع بين السرعة (حالات واضحة) والدقة البشرية (حالات حدية) مع تقديم تفسير شفاف.</li>
-            <li><strong>مقارنة الأداء:</strong> أظهر النموذج العادل انخفاضاً في الفجوة بين المحافظات وتحسناً في مؤشر MCAS مقارنة بالنموذج التقليدي.</li>
-        </ul>
-        <p>هذا النظام يحقق رؤية "ميزان" في توزيع الإسكان الاجتماعي بعدالة، ويضع الأساس لتطبيق حوكمة الذكاء الاصطناعي في القطاع الحكومي.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    
+    # حساب متوسط الأوزان للفئات المختلفة
+    remote_areas = ["أسيوط", "سوهاج", "قنا", "أسوان"]
+    avg_weight_remote = data[data["المحافظة"].isin(remote_areas)]["وزن_العدالة"].mean()
+    avg_weight_widowed = data[data["الحالة_الاجتماعية"] == "أرمل"]["وزن_العدالة"].mean()
+    avg_weight_severe_disability = data[data["شدة_الإعاقة"] >= 0.7]["وزن_العدالة"].mean()
+    avg_weight_intersectional = data[(data["الحالة_الاجتماعية"] == "أرمل") & 
+                                      (data["إعاقة"] == 1) & 
+                                      (data["المحافظة"].isin(remote_areas))]["وزن_العدالة"].mean()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        <div style="background:white; padding:2rem; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,0.05);">
+            <h4>✨ نقاط القوة في هذا التصميم:</h4>
+            <ul>
+                <li><strong>نظام الأوزان التصاعدي:</strong> يبدأ من العجز البدني (الإعاقة الشديدة)، ثم الهشاشة الاجتماعية (الأرامل)، ثم المظلومية الجغرافية (المناطق النائية).</li>
+                <li><strong>الأوزان التقاطعية:</strong> تراكم الأوزان للحالات المركبة (أرملة + إعاقة + منطقة نائية) يعطي وزناً مضاعفاً يعكس واقع الحياة.</li>
+                <li><strong>مقياس MCAS:</strong> مكافحة الدقة الوهمية والتركيز على أداء النموذج مع الفئات القليلة.</li>
+                <li><strong>نظام هجين:</strong> الجمع بين السرعة (حالات واضحة) والدقة البشرية (حالات حدية).</li>
+                <li><strong>تحليل ماذا لو:</strong> شفافية كاملة تسمح للمسؤول بتجربة سيناريوهات مختلفة.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div style="background:white; padding:2rem; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,0.05);">
+            <h4>⚖️ تأثير الأوزان التصاعدية:</h4>
+            <ul>
+                <li><strong>الإعاقة الشديدة:</strong> متوسط الوزن {avg_weight_severe_disability:.2f}x</li>
+                <li><strong>الأرامل:</strong> متوسط الوزن {avg_weight_widowed:.2f}x</li>
+                <li><strong>المناطق النائية:</strong> متوسط الوزن {avg_weight_remote:.2f}x</li>
+                <li><strong>التقاطع (أرملة + إعاقة + نائية):</strong> متوسط الوزن {avg_weight_intersectional:.2f}x</li>
+            </ul>
+            <p>النموذج العادل يحقق توازناً بين الكفاءة والعدالة، ويقلل الفجوات بين الفئات.</p>
+        </div>
+        """, unsafe_allow_html=True)
 
     # تذييل
     st.markdown("""
     <div class="footer">
         <p>⚖️ Mizan AI - نظام العدالة الذكي | مستند إلى أبحاث د. محمد الهاداد (MCAS) | © 2026</p>
+        <p>فلسفة التصميم: الإعاقة ← الأرامل ← المناطق النائية ← أوزان متراكمة للتداخلات</p>
     </div>
     """, unsafe_allow_html=True)
 
